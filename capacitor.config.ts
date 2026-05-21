@@ -3,11 +3,10 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'com.sandooq.links',
   appName: 'Sandooq',
-  webDir: 'out', // Points to your static Next.js export builds
+  webDir: 'out', // Let Capacitor load the local exported build first
   server: {
-    // Put your deployed production Vercel URL here so sharing works from APK
-    url: 'https://linkgraveyard.vercel.app', 
-    cleartext: true
+    cleartext: true,
+    allowNavigation: ['linkgraveyard.vercel.app']
   }
 };
 
