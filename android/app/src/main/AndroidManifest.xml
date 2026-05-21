@@ -5,14 +5,14 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="SandooqLinks"
+        android:label="Sandooq"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"> <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density"
-            android:label="SandooqLinks">
+            android:label="Sandooq">
             
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
