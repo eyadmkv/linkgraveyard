@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.sandooq.links",
+    "sha256_cert_fingerprints": ["29:29:7B:29:3B:EF:22:13:65:B1:CC:A5:87:6A:2E:06:7B:9D:46:68:36:B4:9B:83:64:A3:31:73:9D:30:48:18"]
+  }
+}]
