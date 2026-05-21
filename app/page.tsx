@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
 import {
   Search,
@@ -25,30 +25,67 @@ interface LinkItem {
 }
 
 export default function Dashboard() {
-  const { getToken, isSignedIn } = useAuth();
+  // 1. Added isLoaded to track when Clerk is finished initializing
+  const { getToken, isSignedIn, isLoaded } = useAuth(); 
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [urlInput, setUrlInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isFetching, setIsFetching] = useState(true);
+  // 2. Initialized as false to avoid unnecessary "true -> false" flips
+  const [isFetching, setIsFetching] = useState(false); 
   const [error, setError] = useState<string | null>(null);
 
-  const fetchLinks = useCallback(async () => {
-    if (!isSignedIn) {
-      setIsFetching(false);
+  useEffect(() => {
+    // 3. Only run the effect if Clerk is loaded and user is signed in
+    if (!isLoaded || !isSignedIn) {
       return;
     }
 
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        setError(null);
+        setIsFetching(true); // Start fetching state here
+        const token = await getToken();
+        if (!token) throw new Error("No authentication token available");
+
+        const params = new URLSearchParams();
+        if (searchQuery) params.append("q", searchQuery);
+        if (selectedTag) params.append("tag", selectedTag);
+        if (showUnreadOnly) params.append("unread", "true");
+
+        const res = await fetch(`/api/links?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`Failed to fetch links: ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setLinks(data);
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed fetching links:", err);
+          setError(err instanceof Error ? err.message : "Failed to load links");
+        }
+      } finally {
+        if (!cancelled) setIsFetching(false);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchQuery, selectedTag, showUnreadOnly, isSignedIn, isLoaded, getToken]);
+
+  const refetch = async () => {
+    if (!isSignedIn) return;
     try {
       setError(null);
       const token = await getToken();
-      
-      if (!token) {
-        throw new Error("No authentication token available");
-      }
-      
+      if (!token) throw new Error("No authentication token");
+
       const params = new URLSearchParams();
       if (searchQuery) params.append("q", searchQuery);
       if (selectedTag) params.append("tag", selectedTag);
@@ -57,30 +94,19 @@ export default function Dashboard() {
       const res = await fetch(`/api/links?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      
-      if (!res.ok) {
-        throw new Error(`Failed to fetch links: ${res.status}`);
-      }
-      
+      if (!res.ok) throw new Error(`Failed to fetch links: ${res.status}`);
       const data = await res.json();
       setLinks(data);
     } catch (err) {
       console.error("Failed fetching links:", err);
       setError(err instanceof Error ? err.message : "Failed to load links");
-    } finally {
-      setIsFetching(false);
     }
-  }, [searchQuery, selectedTag, showUnreadOnly, getToken, isSignedIn]);
-
-  // Clean implementation of dependency listener hook
-  useEffect(() => {
-    fetchLinks();
-  }, [fetchLinks]);
+  };
 
   const handleSubmitLink = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!urlInput.trim()) return;
-    
+
     if (!isSignedIn) {
       setError("Please sign in to save links");
       return;
@@ -88,27 +114,27 @@ export default function Dashboard() {
 
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const token = await getToken();
       if (!token) throw new Error("No authentication token");
-      
+
       const res = await fetch("/api/links", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` 
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ url: urlInput }),
       });
-      
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.message || `Failed to save link: ${res.status}`);
       }
-      
+
       setUrlInput("");
-      await fetchLinks(); 
+      await refetch();
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Failed to save link");
@@ -119,23 +145,23 @@ export default function Dashboard() {
 
   const toggleReadStatus = async (id: number, currentStatus: boolean) => {
     if (!isSignedIn) return;
-    
+
     try {
       const token = await getToken();
       if (!token) throw new Error("No authentication token");
-      
+
       const res = await fetch(`/api/links/${id}`, {
         method: "PATCH",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` 
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ is_read: !currentStatus }),
       });
-      
+
       if (!res.ok) throw new Error(`Failed to update status: ${res.status}`);
-      
-      await fetchLinks();
+
+      await refetch();
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Failed to update status");
@@ -144,21 +170,20 @@ export default function Dashboard() {
 
   const deleteLink = async (id: number) => {
     if (!confirm("هل أنت متأكد من حذف هذا الرابط؟")) return;
-    
     if (!isSignedIn) return;
-    
+
     try {
       const token = await getToken();
       if (!token) throw new Error("No authentication token");
-      
-      const res = await fetch(`/api/links/${id}`, { 
+
+      const res = await fetch(`/api/links/${id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
-      
+
       if (!res.ok) throw new Error(`Failed to delete link: ${res.status}`);
-      
-      await fetchLinks();
+
+      await refetch();
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Failed to delete link");
@@ -167,7 +192,9 @@ export default function Dashboard() {
 
   const allTags = Array.from(new Set(links.flatMap((l) => l.tags || [])));
 
-  if (isFetching && links.length === 0) {
+  // 4. Combined logic for showing the loader:
+  // Show loader if Clerk isn't ready OR if we are currently fetching links for the first time
+  if (!isLoaded || (isFetching && links.length === 0)) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <div className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
@@ -181,7 +208,7 @@ export default function Dashboard() {
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-400 text-sm text-center">
           {error}
-          <button 
+          <button
             onClick={() => setError(null)}
             className="mr-4 underline hover:no-underline"
           >
@@ -189,8 +216,11 @@ export default function Dashboard() {
           </button>
         </div>
       )}
-      
-      <form onSubmit={handleSubmitLink} className="relative w-full max-w-3xl mx-auto shadow-2xl shadow-indigo-500/5 rounded-2xl">
+
+      <form
+        onSubmit={handleSubmitLink}
+        className="relative w-full max-w-3xl mx-auto shadow-2xl shadow-indigo-500/5 rounded-2xl"
+      >
         <input
           type="url"
           placeholder="أدخل رابط موقع لحفظه..."
@@ -201,9 +231,9 @@ export default function Dashboard() {
           dir="ltr"
           disabled={isLoading || !isSignedIn}
         />
-        <button 
-          type="submit" 
-          disabled={isLoading || !isSignedIn} 
+        <button
+          type="submit"
+          disabled={isLoading || !isSignedIn}
           className="absolute left-2 top-2 bottom-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-6 rounded-xl flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isLoading ? (
@@ -219,13 +249,13 @@ export default function Dashboard() {
           )}
         </button>
       </form>
-      
+
       {!isSignedIn && (
         <div className="text-center py-12 bg-zinc-900/50 rounded-3xl border border-zinc-800/50">
           <p className="text-zinc-400">يرجى تسجيل الدخول لحفظ وعرض روابطك</p>
         </div>
       )}
-      
+
       {isSignedIn && (
         <>
           <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
@@ -293,7 +323,9 @@ export default function Dashboard() {
                 <Layers size={24} />
               </div>
               <h3 className="text-zinc-300 font-medium">لا توجد روابط هنا</h3>
-              <p className="text-zinc-500 text-sm max-w-sm">قم بلصق رابط في الأعلى لحفظه والعودة إليه لاحقاً. ستتم قراءة تفاصيل الرابط تلقائياً.</p>
+              <p className="text-zinc-500 text-sm max-w-sm">
+                قم بلصق رابط في الأعلى لحفظه والعودة إليه لاحقاً. ستتم قراءة تفاصيل الرابط تلقائياً.
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -301,21 +333,25 @@ export default function Dashboard() {
                 <div
                   key={link.id}
                   className={`bg-zinc-900/80 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col group hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20 transition-all duration-300 ${
-                    link.is_read ? 'opacity-60 grayscale-[0.5] hover:opacity-100 hover:grayscale-0' : ''
+                    link.is_read ? "opacity-60 grayscale-[0.5] hover:opacity-100 hover:grayscale-0" : ""
                   }`}
                 >
                   <div className="relative h-44 bg-zinc-800 overflow-hidden">
                     <img
-                      src={link.thumbnail || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=800&auto=format&fit=crop'}
-                      alt={link.title || 'Thumbnail'}
+                      src={
+                        link.thumbnail ||
+                        "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=800&auto=format&fit=crop"
+                      }
+                      alt={link.title || "Thumbnail"}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       loading="lazy"
                       onError={(e) => {
-                        e.currentTarget.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=800&auto=format&fit=crop';
+                        e.currentTarget.src =
+                          "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=800&auto=format&fit=crop";
                       }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent opacity-80" />
-                    
+
                     {link.is_read && (
                       <div className="absolute top-3 right-3 bg-zinc-900/90 backdrop-blur-md text-zinc-300 text-xs px-2.5 py-1 rounded-full flex items-center gap-1.5 border border-zinc-700/50">
                         <CheckCircle2 size={12} className="text-indigo-400" /> مقروء
@@ -324,22 +360,26 @@ export default function Dashboard() {
                   </div>
 
                   <div className="p-5 flex-grow flex flex-col gap-2">
-                    <div className="text-[11px] font-medium font-['Inter'] text-indigo-400 truncate direction-ltr text-left" dir="ltr">
+                    <div
+                      className="text-[11px] font-medium font-['Inter'] text-indigo-400 truncate direction-ltr text-left"
+                      dir="ltr"
+                    >
                       {(() => {
                         try { return new URL(link.url).hostname; } 
-                        catch { return link.url; }
+                        catch (_) { return link.url; }
                       })()}
                     </div>
+                    
                     <a
                       href={link.url}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold text-zinc-100 leading-tight hover:text-indigo-400 transition-colors line-clamp-2"
                     >
-                      {link.title || 'رابط بدون عنوان'}
+                      {link.title || "رابط بدون عنوان"}
                     </a>
                     <p className="text-sm text-zinc-400 line-clamp-2 leading-relaxed mt-1">
-                      {link.description || 'لا يوجد وصف متاح لهذا الرابط.'}
+                      {link.description || "لا يوجد وصف متاح لهذا الرابط."}
                     </p>
                   </div>
 
@@ -348,7 +388,9 @@ export default function Dashboard() {
                       <button
                         onClick={() => toggleReadStatus(link.id, link.is_read)}
                         className={`p-2 rounded-lg transition-colors flex items-center justify-center ${
-                          link.is_read ? 'text-indigo-400 hover:bg-indigo-500/10' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                          link.is_read
+                            ? "text-indigo-400 hover:bg-indigo-500/10"
+                            : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
                         }`}
                         aria-label={link.is_read ? "وضع كغير مقروء" : "وضع كمقروء"}
                       >
