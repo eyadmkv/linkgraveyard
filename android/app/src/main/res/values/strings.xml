@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SandooqLinks</string>
+    <string name="title_activity_main">SandooqLinks</string>
+    <string name="package_name">com.sandooq.links</string>
+    <string name="custom_url_scheme">com.sandooq.links</string>
+</resources>
