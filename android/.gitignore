@@ -5,7 +5,9 @@
 *.aar
 *.ap_
 *.aab
-
+# Android keys
+*.jks
+*.keystore
 # Files for the ART/Dalvik VM
 *.dex
 
