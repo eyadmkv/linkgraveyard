@@ -14,10 +14,9 @@
         android:theme="@style/AppTheme"
     > <activity
             android:name=".MainActivity"
-            android:exported="true"
-            android:launchMode="singleTask"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density"
+            android:exported="true"            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density"
             android:label="Sandooq"
+            android:launchMode="singleInstance"
         >
 
             <intent-filter>
